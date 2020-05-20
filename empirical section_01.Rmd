@@ -1,0 +1,931 @@
+---
+title: "Results"
+author: ''
+date: " "
+always_allow_html: yes
+output:
+  html_document:
+    theme: flatly
+  pdf_document:
+    toc: yes
+  word_document: default
+---
+
+
+
+
+Last update: `r Sys.time()`
+
+
+```{r set-global-options, echo = FALSE}
+knitr::opts_chunk$set(eval = TRUE, 
+                      echo = FALSE, 
+                      message=FALSE,
+                      warning = FALSE,
+                      cache = FALSE,
+                      include = TRUE,
+                      collapse = FALSE,
+                      dependson = NULL,
+                      engine = "R", #  Chunks will always have R code, unless noted
+                      error = TRUE,
+                      fig.path="Figures/",  #  Set the figure options
+                      fig.align = "left",
+                      fig.width = 8,
+                      fig.height = 4)
+```
+
+
+```{r}
+library(tidyverse)
+library(car)
+library(sjmisc)
+library(sjPlot)
+library(ggpubr)
+library(viridis)
+library(kableExtra)
+library(sjstats)
+library(lme4)
+library(mediation)
+library(emmeans)
+```
+
+```{r}
+source("https://www.dropbox.com/s/wb6tu6gvhgmdxrl/Local_2019_dm_01.R?dl=1")
+
+
+
+local_00.r2 <- local_00 %>% filter(!(CITY %in% c(10,6,8,11,12,13,15,18,19,22)))
+
+
+```
+
+```{r}
+pl <- c(
+  `(Intercept)` = "Intercept",
+  bureaucrat = "Bureaucrat",
+  Type.lab1_Manager_local = "Locally residing bureaucrat",
+  Type.lab2_Manager_external = "Externally residing bureaucrat",
+  `scale(Social_id_econ_and_housing_01, scale = F)` = "Social identification with economic distress",
+  `scale(Social_id_resident_01, scale = F)` = "Social identification with residents",
+  `scale(female, scale = F)` = "Female",
+  `scale(Tenure_integrated.g, scale = F)` = "Tenure",
+  `scale(Age.g, scale = F)` = "Age",
+  `scale(children.adult, scale = F)` = "Adult children",
+  `scale(log(housingprice.2015), scale = F)` = "Housing prices",
+  `scale(log(population.2015), scale = F)`  = "Population",
+  `scale(log(density.2015), scale = F)` = "Density",
+  `scale(Ideology, scale = F)` = "Ideology (5=left)",
+  `scale(house_owner, scale = F)` = "Home owner"
+  )
+
+```
+
+
+## Description of group characteristics. 
+
+We begin our quantitative analyses by describing the demographic characteristics of our sample, and comparing theses characteristics across the different groups (politicians and bureaucrats; and the subsequent distinction bewteen locally- and externally-residing bureaucrats). **Table 1** presents the distributions of demographic variables across these groups. Several significant differences are observed. Namely, externally-residing bureaucrats (at least in our sample) are younger, less tenured, and have younger children, compared with both locally-residing bureaucrats and politicians. Moreover, there are relatively less female politicians. While we do not have reliable data on the demographics of the general population of local bureaucrats, we do not have any reason to suspect a selection bias in that matter.(Am I right?) Finally, it is noteworthy that over 90 percent of participants are homeowners (cf. Einstein et al. 2019), with no significant differences between the groups.[^footnote_homeowners] We account for these observed differences in our regression analyses. 
+
+[^footnote_homeowners]: By comparison, the percentage of homeowners among the general Israeli households is estimated around 65%. https://www.calcalist.co.il/real_estate/articles/0,7340,L-3755697,00.html
+
+
+<br>
+
+
+**Table 1**
+
+```{r}
+t1 <- local_00 %>% 
+  filter(politician==0) %>% 
+  mutate(Type.lab = "2_Bureaucrat")
+
+t2 <- local_00 %>% rbind(t1) %>% 
+  mutate(Type.lab = Type.lab %>% Recode("
+  '0_Politician' = '1_Politician';
+  '1_Manager_local'='3_Manager_local';
+  '2_Manager_external'='4_Manager_external'")) %>% 
+  mutate(t1 = ifelse(Type.lab %in% c("1_Politician","2_Bureaucrat"),0,1)) %>% 
+  mutate(t2 = case_when(
+    Type.lab %in% c("1_Politician","2.Bureaucrat") ~ 1,
+    Type.lab %in% c("3_Manager_local") ~ 2,
+    Type.lab %in% c("4_Manager_external") ~ 3
+  ))
+```
+
+
+
+```{r, echo=FALSE, warning=FALSE, message=F}
+t1.1.female =
+  t2 %>%
+  drop_na(Type.lab) %>%
+  mutate(female = female %>% Recode("0='Men';
+                                    1='Women'")) %>% 
+  group_by(Type.lab, female) %>%
+  summarise(n = n()) %>%
+  spread(Type.lab, n) %>%
+  ungroup()
+
+t1.2.female <- chisq.test(local_00$Type.lab,local_00$female)
+
+t1.1.female <- t1.1.female %>% 
+  mutate(chisq = c(
+  str_c("Chi-sq(",t1.2.female[["parameter"]][["df"]],")=",t1.2.female[["statistic"]][["X-squared"]] %>% round(3),
+        ", p=",
+        t1.2.female[["p.value"]] %>% round(3))),
+  var.name = c("Gender")) %>% 
+  
+  #var.name = c("Gender",rep("",nrow(t1.1.female)-1))) %>% 
+  rename("cat" = "female" )
+
+
+
+
+
+t1.1.Age_cat =
+  t2 %>%
+  drop_na(Type.lab) %>%
+  group_by(Type.lab, Age_cat) %>%
+  summarise(n = n()) %>%
+  spread(Type.lab, n) %>%
+  ungroup()
+
+t1.2.Age_cat <- chisq.test(local_00$Type.lab,local_00$Age_cat)
+
+t1.1.Age_cat <- t1.1.Age_cat %>% 
+  mutate(chisq = c(
+  str_c("Chi-sq(",t1.2.Age_cat[["parameter"]][["df"]],")=",t1.2.Age_cat[["statistic"]][["X-squared"]] %>% round(3),
+        ", p=",
+        t1.2.Age_cat[["p.value"]] %>% round(3))),
+  #rep("",nrow(t1.1.Age_cat)-1)),
+  var.name = c("Age")) %>% 
+  rename("cat" = "Age_cat" )
+
+t1.1.Children_n =
+  t2 %>%
+  drop_na(Type.lab) %>%
+  group_by(Type.lab, Children_n) %>%
+  summarise(n = n()) %>%
+  spread(Type.lab, n) %>%
+  ungroup()
+
+t1.2.Children_n <- chisq.test(local_00$Type.lab,local_00$Children_n)
+
+t1.1.Children_n <- t1.1.Children_n %>% 
+  mutate(chisq = c(
+  str_c("Chi-sq(",t1.2.Children_n[["parameter"]][["df"]],")=",t1.2.Children_n[["statistic"]][["X-squared"]] %>% round(3),
+        ", p=",
+        t1.2.Children_n[["p.value"]] %>% round(3))),
+  var.name = c("N children")) %>% 
+  rename("cat" = "Children_n" )
+
+t1.1.Children_age =
+  t2 %>%
+  drop_na(Type.lab) %>% 
+  group_by(Type.lab, Children_age.lab) %>%
+  summarise(n = n()) %>%
+  spread(Type.lab, n) %>%
+  ungroup()
+
+t1.2.Children_age <-
+  chisq.test(local_00$Type.lab,local_00$Children_age.lab)
+
+t1.1.Children_age <- t1.1.Children_age %>% 
+  mutate(chisq = c(
+  str_c("Chi-sq(",t1.2.female[["parameter"]][["df"]],")=",t1.2.Children_age[["statistic"]][["X-squared"]] %>% round(3),
+        ", p=",
+        t1.2.Children_age[["p.value"]] %>% round(3))),
+  var.name = c("Children's age")) %>% 
+  rename("cat" = "Children_age.lab" )
+
+t1.1.Tenure_integrated =
+  t2 %>%
+  drop_na(Type.lab) %>%
+  group_by(Type.lab, Tenure_integrated) %>%
+  summarise(n = n()) %>%
+  spread(Type.lab, n) %>%
+  ungroup()
+
+t1.2.Tenure_integrated <- chisq.test(local_00$Type.lab,local_00$Tenure_integrated)
+
+t1.1.Tenure_integrated <- t1.1.Tenure_integrated %>% 
+  mutate(chisq = c(
+  str_c("Chi-sq(",t1.2.Tenure_integrated[["parameter"]][["df"]],")=",t1.2.Tenure_integrated[["statistic"]][["X-squared"]] %>% round(3),
+        ", p=",
+        t1.2.Tenure_integrated[["p.value"]] %>% round(3))),
+  var.name = c("Tenure")) %>% 
+  rename("cat" = "Tenure_integrated" )
+
+
+#t1.1.Profession_4cat =
+#  t2 %>%
+#  drop_na(Type.lab) %>%
+#  group_by(Type.lab, Profession_4cat) %>%
+#  summarise(n = n()) %>%
+#  spread(Type.lab, n) %>%
+#  ungroup()
+
+#t1.2.Profession_4cat <- chisq.test(local_00$Type.lab,local_00$Profession_4cat)
+
+#t1.1.Profession_4cat <- t1.1.Profession_4cat %>% 
+#  mutate(chisq = c(
+#  str_c("Chi-sq(",t1.2.Profession_4cat[["parameter"]][["df"]],")=",t1.2.Profession_4cat[["statistic"]][["X-squared"]] %>% round(3),
+ #       ", p=",
+#        t1.2.Profession_4cat[["p.value"]] %>% round(3)),
+#  rep("",nrow(t1.1.Profession_4cat)-1)),
+#  var.name = c("Profession",rep("",nrow(t1.1.Profession_4cat)-1))) %>% 
+#  rename("cat" = "Profession_4cat" )
+
+
+t1.1.Ideology =
+  t2 %>%
+  drop_na(Type.lab) %>%
+  mutate(Ideology = Ideology %>% Recode("1='1 Right';
+  2='2 Moderate right';
+  3='3 Center';
+  4='4 Moderate left';
+  5 = '5 Left'")) %>% 
+  group_by(Type.lab, Ideology) %>%
+  summarise(n = n()) %>%
+  spread(Type.lab, n) %>%
+  ungroup()
+
+t1.2.Ideology <- chisq.test(local_00$Type.lab,local_00$Ideology)
+
+t1.1.Ideology <- t1.1.Ideology %>% 
+  mutate(chisq = c(
+  str_c("Chi-sq(",t1.2.Ideology[["parameter"]][["df"]],")=",t1.2.Ideology[["statistic"]][["X-squared"]] %>% round(3),
+        ", p=",
+        t1.2.Ideology[["p.value"]] %>% round(3))),
+  var.name = "ideology") %>% 
+#    c("Ideology",rep("",nrow(t1.1.Ideology)-1))) %>% 
+  rename("cat" = "Ideology" )
+
+
+t1.1.house_owner =
+  t2 %>%
+  drop_na(Type.lab) %>%
+  mutate(house_owner = house_owner %>% Recode("0='No';
+                                              1='Yes'")) %>% 
+  group_by(Type.lab, house_owner) %>%
+  summarise(n = n()) %>%
+  spread(Type.lab, n) %>%
+  ungroup()
+
+t1.2.house_owner <- chisq.test(local_00$Type.lab,local_00$house_owner)
+
+t1.1.house_owner <- t1.1.house_owner %>% 
+  mutate(chisq = c(
+  str_c("Chi-sq(",t1.2.house_owner[["parameter"]][["df"]],")=",t1.2.house_owner[["statistic"]][["X-squared"]] %>% round(3),
+        ", p=",
+        t1.2.house_owner[["p.value"]] %>% round(3))),
+  var.name = c("Home owner")) %>% 
+  rename("cat" = "house_owner" )
+```
+
+
+```{r}
+belance.table.type <- rbind(t1.1.female,
+                       t1.1.Age_cat,
+                       t1.1.Tenure_integrated,
+                       t1.1.Children_n,
+                       t1.1.Children_age,
+                       #t1.1.Profession_4cat,
+                       t1.1.Ideology,
+                       t1.1.house_owner) 
+
+belance.table.type <- belance.table.type[,c(7,1:6)]
+    
+belance.table.type[is.na(belance.table.type)] <- ""
+```
+
+
+
+```{r, echo=FALSE, warning=FALSE, message=F}
+n.politicians <- t2 %>%
+  filter(Type.lab == "1_Politician") %>%
+  nrow()
+
+n.bureaucrats <- t2 %>%
+  filter(Type.lab == "2_Bureaucrat") %>%
+  nrow() 
+
+n.local.manager <- t2 %>%
+  filter(Type.lab == "3_Manager_local") %>%
+  nrow() 
+
+n.external.manager <- t2 %>%
+  filter(Type.lab == "4_Manager_external") %>%
+  nrow() 
+
+
+
+
+belance.table.type %>%
+  kable(col.names = c(
+    "",
+    "",
+    str_c("a Politician\n(n=", n.politicians, ")"),
+    
+    str_c("b Bureaucrats (all) (n=", n.bureaucrats, ")"),
+    
+    str_c("c Locally residing bureaucrat (n=",
+          n.local.manager,
+          ")"),
+    str_c("d Externally residing bureaucrat (n=", n.external.manager,
+          ")"),
+    "Statistic"
+  )) %>%
+  kable_styling(
+    bootstrap_options = c("condensed"),
+    full_width = F,
+    position = "left",
+    font_size = 9
+  )  %>%
+  collapse_rows(columns = c(1,7), valign = "top")
+
+#library(gt)
+
+
+#belance.table.type %>% 
+#  gt(groupname_col = "var.name", 
+#  cells_column_labels(c("1","2","3","4","5","6"))
+```
+<font size="0.5">
+
+*Notes*: Chi-square tests refer to comparison between the three groups (politicians, locally residing bureaucrats and externally residing bureaucrats). 
+
+
+</font>
+
+
+<br><br>
+
+Next, we turn to examine the results in relation to our research hypotheses. We arrange our discussion based on our two main outcome variables, as follows: First, we discuss our results for the hypotheses relating to participants' preferences for affordable housing and densification (H1, H3, H4). Then, we discuss the results for the research hypotheses of preferences for targeted affordable housing for local residents (H2, H3, H5a, H5b). 
+
+<br>
+
+
+
+
+```{r}
+tab.all <- local_00 %>% 
+  #group_by(politician) %>% 
+  summarise(n = n(),
+            mean = mean(Policy_pref_global_01,na.rm = T),
+            sd = sd(Policy_pref_global_01,na.rm = T),
+            q1 = quantile(Policy_pref_global_01,0.25,na.rm=T),
+            median = quantile(Policy_pref_global_01,0.5,na.rm=T),
+            q3 = quantile(Policy_pref_global_01,0.75,na.rm=T),
+            above.middle = length(Policy_pref_global_01[Policy_pref_global_01>3])) %>% 
+  mutate(se = sd/sqrt(n),
+         above.middle.percent = above.middle/n) %>% 
+  mutate(ci.low = mean - 1.96*se,
+         ci.high = mean + 1.96*se)
+
+tab.bureaucrats <- local_00 %>% 
+  group_by(politician) %>% 
+  summarise(n = n(),
+            mean = mean(Policy_pref_global_01,na.rm = T),
+            sd = sd(Policy_pref_global_01,na.rm = T),
+            q1 = quantile(Policy_pref_global_01,0.25,na.rm=T),
+            median = quantile(Policy_pref_global_01,0.5,na.rm=T),
+            q3 = quantile(Policy_pref_global_01,0.75,na.rm=T),
+            above.middle = length(Policy_pref_global_01[Policy_pref_global_01>3])) %>% 
+  mutate(se = sd/sqrt(n),
+         above.middle.percent = above.middle/n) %>% 
+  mutate(ci.low = mean - 1.96*se,
+         ci.high = mean + 1.96*se)
+
+tab.bureaucrats.1 <- tab.bureaucrats %>% filter(politician==0)
+tab.bureaucrats.0 <- tab.bureaucrats %>% filter(politician==1)
+
+
+
+tab.type3 <- local_00 %>% 
+  group_by(Type.lab) %>% 
+  summarise(n = n(),
+            mean = mean(Policy_pref_global_01,na.rm = T),
+            sd = sd(Policy_pref_global_01,na.rm = T),
+            q1 = quantile(Policy_pref_global_01,0.25,na.rm=T),
+            median = quantile(Policy_pref_global_01,0.5,na.rm=T),
+            q3 = quantile(Policy_pref_global_01,0.75,na.rm=T),
+            above.middle = length(Policy_pref_global_01[Policy_pref_global_01>0.5])) %>% 
+  mutate(se = sd/sqrt(n),
+         above.middle.percent = above.middle/n) %>% 
+  mutate(ci.low = mean - 1.96*se,
+         ci.high = mean + 1.96*se)
+tab.type3.0 <- tab.type3 %>% filter(Type.lab=="0_Politician")
+tab.type3.1 <- tab.type3 %>% filter(Type.lab=="1_Manager_local")
+tab.type3.2 <- tab.type3 %>% filter(Type.lab=="2_Manager_external")
+
+
+t.politicians.pref.global <- t.test(Policy_pref_global_01~politician,local_00)
+
+t.type3.pref.global.21 <- t.test(Policy_pref_global_01~Type.lab,local_00 %>% filter(Type.lab!="0_Politician"))
+t.type3.pref.global.20 <- t.test(Policy_pref_global_01~Type.lab,local_00 %>% filter(Type.lab!="1_Manager_local"))
+t.type3.pref.global.12 <- t.test(Policy_pref_global_01~Type.lab,local_00 %>% filter(Type.lab!="2_Manager_external"))
+
+
+r.social.id.econ <- cor.test(local_00$Policy_pref_global_01,local_00$Social_id_econ_and_housing_01,na.action = "na.omit")
+```
+
+
+## Preferences for affordable housing and densification
+
+To reiterate, based on "homevoter theory", we expect local authority bureaucrats, and externally-residing bureaucrats in particular, to be more supportive of densification and affordable housing developments (H1, H3). Also, we expect officials support for densification to be positively associated with officials' social identification with economic distress (H4). 
+
+**Figure 1** compares, descriptively, participants' reported support for densification across the different groups. We present both the comparison in means (left panel), and in the distributions (right panel). The dashed horizontal line in both panels is set at the scale's middle value (0.5), which serves as a point of reference for distinguishing between relative support and objection. Overall, participants of all groups are relatively supportive for densification and affordable housing (Mean = `r tab.all$mean %>% round(3)`, SD = `r tab.all$sd %>% round(3)`, Median = `r tab.all$median %>% round(3)`). As shown by the figure, bureaucrats tended to be slightly more supportive compared with politicians (*diff* = `r (tab.bureaucrats.0$mean - tab.bureaucrats.1$mean) %>% round(3)` [`r (t.politicians.pref.global[["conf.int"]][1]*-1) %>% abs() %>% round(.,2)`-`r (t.politicians.pref.global[["conf.int"]][2]*-1) %>% abs() %>% round(.,2)`]). We further find that externally-residing bureaucrats reported significantly higher scores than locally-residing bureaucrats and politicians (*diff* = `r (tab.type3.2$mean - tab.type3.1$mean) %>% round(3)` [`r (t.type3.pref.global.21[["conf.int"]][2]*-1) %>% round(.,2)`-`r (t.type3.pref.global.21[["conf.int"]][1]*-1) %>% round(.,2)`] and `r (tab.type3.2$mean - tab.type3.0$mean) %>% round(3)` [`r (t.type3.pref.global.20[["conf.int"]][2]*-1) %>% round(.,2)`-`r (t.type3.pref.global.20[["conf.int"]][1]*-1) %>% round(.,2)`], respectively). Remarkably, `r (tab.type3.2$above.middle.percent*100) %>% round(0)`% of externally residing bureaucrats reported a score higher than 0.5, compared with `r (tab.type3.1$above.middle.percent*100) %>% round(0)`% and `r (tab.type3.0$above.middle.percent*100) %>% round(0)`% among locally residing bureaucrats and politicians, respectively. Support for desnsification is also positively correlated with participants' social identification with economic hardship (*r*=`r r.social.id.econ[["estimate"]][["cor"]] %>% round(2)`[`r r.social.id.econ[["conf.int"]][[1]] %>% round(2)`,`r r.social.id.econ[["conf.int"]][[2]] %>% round(2)`], *p*=`r r.social.id.econ[["p.value"]] %>% round(3)`). There are no significant differences bewteen the groups in relation to the latter independent variable.     
+
+
+```{r}
+t1 <- local_00 %>% 
+  filter(politician==0) %>% 
+  mutate(Type.lab = "2.Bureaucrat")
+
+t2 <- local_00 %>% rbind(t1) %>% 
+  mutate(Type.lab = Type.lab %>% Recode("
+  '0_Politician' = '1_Politician';
+  '1_Manager_local'='3_Manager_local';
+  '2_Manager_external'='4_Manager_external'")) %>% 
+  mutate(t1 = ifelse(Type.lab %in% c("1_Politician","2.Bureaucrat"),0,1)) %>% 
+  mutate(t2 = case_when(
+    Type.lab %in% c("1_Politician","2.Bureaucrat") ~ 1,
+    Type.lab %in% c("3_Manager_local") ~ 2,
+    Type.lab %in% c("4_Manager_external") ~ 3
+  ))
+```
+
+
+<br>
+
+### **Figure 1**
+```{r}
+p1 <- 
+  t2 %>% 
+  drop_na(Type.lab) %>% 
+  ggplot(aes(x=factor(Type.lab),y=Policy_pref_global_01))+
+  stat_summary(fun.data = mean_cl_normal, fun.args=list(conf.int=0.95), geom = "errorbar",width=0.1,size=0.5,alpha=0.7) + 
+  stat_summary(fun.y = mean, geom = "point", size=3)+
+  scale_y_continuous(name="")+ #,breaks = seq(2,4,by=0.5)
+  xlab("")+
+  scale_x_discrete(name="",
+                   labels=c("a.\nPoliticians",
+                            "b.\nBureaucrats\n(all)",
+                            "c.\nLocally\nresiding\nbureaucrats",
+                                    "d.\n Externally\nresiding\nbureaucrats"))+
+  theme_classic()+
+  #coord_cartesian(ylim = c(2.8,4))+
+  theme(legend.position = "none",
+        plot.title.position = "plot")+
+     geom_hline(yintercept = 0.5, colour = "grey60", linetype = 2)+
+  #coord_cartesian(ylim = c(2.5,4))+
+  ggtitle("",subtitle = "Preference for affordable\nhousing & densification")
+
+
+p2 <- 
+t2 %>%
+  drop_na(Type.lab) %>% 
+  ggplot(aes(x=factor(Type.lab),y=Policy_pref_global_01))+
+  geom_violin(color = "gray70")+
+  geom_boxplot(width = 0.2, outlier.alpha = 0.5, outlier.size = 0.5,color = "gray50")+
+  scale_y_continuous(name="")+ #,breaks=1:5
+  xlab("")+
+  scale_x_discrete(name="",
+                   labels=c("a.\n\n\n",
+                                "b.",
+                                    "c.",
+                            "d."))+
+  theme_classic()+
+  theme(legend.position = "none")+
+     geom_hline(yintercept = 0.5, colour = "grey60", linetype = 2)+
+  ggtitle("",subtitle = "\n")
+
+
+ggarrange(p1,p2,ncol = 2,nrow = 1,
+          widths = c(2,1.5),
+          common.legend = T)
+
+
+
+```
+<font size="0.5">
+*Notes*: Left panel presents means and 95% CIs. Right panel presents distributions via boxplots. Horizontal line represents scale's middle value.
+</font>
+
+<br>
+
+These findings are in line with our research hypotheses. We further tested the robustness of these effects via multilevel regression models with random effect at the city level and adding controls. In all these models, the differences between politicians and bureaucrats altogether and externally-residing bureaucrats are significant, while the differences between externally- and locally-residing bureaucrats are in a similar direction, but not sufficiently significant. Finally, social identificaiton with economic distress has a positive and significant effect on preference for densification, above and beyond the differences bewteen the different types, and the latter effect also remains stable when controlling for participants' identification with local residents (Models 1.3, 1.4).        
+
+<br>
+
+## Preferences for targeted affordable housing for local residents.
+
+<br>
+
+```{r}
+tab.all <- local_00 %>% 
+  #group_by(politician) %>% 
+  summarise(n = n(),
+            mean = mean(Policy_pref_local_01,na.rm = T),
+            sd = sd(Policy_pref_local_01,na.rm = T),
+            q1 = quantile(Policy_pref_local_01,0.25,na.rm=T),
+            median = quantile(Policy_pref_local_01,0.5,na.rm=T),
+            q3 = quantile(Policy_pref_local_01,0.75,na.rm=T),
+            above.middle = length(Policy_pref_local_01[Policy_pref_local_01>0.5])) %>% 
+  mutate(se = sd/sqrt(n),
+         above.middle.percent = above.middle/n) %>% 
+  mutate(ci.low = mean - 1.96*se,
+         ci.high = mean + 1.96*se)
+
+tab.bureaucrats <- local_00 %>% 
+  group_by(politician) %>% 
+  summarise(n = n(),
+            mean = mean(Policy_pref_local_01,na.rm = T),
+            sd = sd(Policy_pref_local_01,na.rm = T),
+            q1 = quantile(Policy_pref_local_01,0.25,na.rm=T),
+            median = quantile(Policy_pref_local_01,0.5,na.rm=T),
+            q3 = quantile(Policy_pref_local_01,0.75,na.rm=T),
+            above.middle = length(Policy_pref_local_01[Policy_pref_local_01>0.5])) %>% 
+  mutate(se = sd/sqrt(n),
+         above.middle.percent = above.middle/n) %>% 
+  mutate(ci.low = mean - 1.96*se,
+         ci.high = mean + 1.96*se)
+
+tab.bureaucrats.1 <- tab.bureaucrats %>% filter(politician==0)
+tab.bureaucrats.0 <- tab.bureaucrats %>% filter(politician==1)
+
+
+
+tab.type3 <- local_00 %>% 
+  group_by(Type.lab) %>% 
+  summarise(n = n(),
+            mean = mean(Policy_pref_local_01,na.rm = T),
+            sd = sd(Policy_pref_local_01,na.rm = T),
+            q1 = quantile(Policy_pref_local_01,0.25,na.rm=T),
+            median = quantile(Policy_pref_local_01,0.5,na.rm=T),
+            q3 = quantile(Policy_pref_local_01,0.75,na.rm=T),
+            above.middle = length(Policy_pref_local_01[Policy_pref_local_01>0.5])) %>% 
+  mutate(se = sd/sqrt(n),
+         above.middle.percent = above.middle/n) %>% 
+  mutate(ci.low = mean - 1.96*se,
+         ci.high = mean + 1.96*se)
+tab.type3.0 <- tab.type3 %>% filter(Type.lab=="0_Politician")
+tab.type3.1 <- tab.type3 %>% filter(Type.lab=="1_Manager_local")
+tab.type3.2 <- tab.type3 %>% filter(Type.lab=="2_Manager_external")
+
+
+t.politicians.pref.local <- t.test(Policy_pref_local_01~politician,local_00)
+
+t.type3.pref.local.21 <- t.test(Policy_pref_local_01~Type.lab,local_00 %>% filter(Type.lab!="0_Politician"))
+t.type3.pref.local.20 <- t.test(Policy_pref_local_01~Type.lab,local_00 %>% filter(Type.lab!="1_Manager_local"))
+t.type3.pref.local.12 <- t.test(Policy_pref_local_01~Type.lab,local_00 %>% filter(Type.lab!="2_Manager_external"))
+
+
+r.social.id.resident <- cor.test(local_00$Policy_pref_local_01,local_00$Social_id_resident_01,na.action = "na.omit")
+```
+
+
+Both locally and externally residing bureaucrats reported weaker preferences for targeted affordable housing for locals, compared with politicians. (report differences in means and in distributions)
+
+
+<br>
+
+Both locally and externally residing bureaucrats reported weaker preferences for targeted affordable housing for locals, compared with politicians (H3). (report differences in means and in distributions, based on Figure 2).
+
+In regression table 2, we report results of multilevel analyses, and controlling for individual and city level variables. 
+
+The differences between externally residing bureaucrats (but not locally residing) is mediated by their lower identification with local residents. Differences in social identification with residents are presented in Figure 3. Mediation is shown in regression model 2.3. We further test mediation via causal mediation analysis.     
+
+
+
+### **Figure 2**
+```{r}
+p1 <- 
+  t2 %>% 
+  drop_na(Type.lab) %>% 
+  ggplot(aes(x=factor(Type.lab),y=Policy_pref_local_01))+
+  stat_summary(fun.data = mean_cl_normal, fun.args=list(conf.int=0.95), geom = "errorbar",width=0.1,size=0.5) + 
+  stat_summary(fun.y = mean, geom = "point", size=3)+
+  scale_y_continuous(name="")+
+  xlab("")+
+  scale_x_discrete(name="",
+                   labels=c("a.\nPoliticians",
+                            "b.\nBureaucrats\n(all)",
+                            "c.\nLocally\nresiding\nbureaucrats",
+                                    "d.\n Externally\nresiding\nbureaucrats"))+
+  theme_classic()+
+  #coord_cartesian(ylim = c(2.8,4))+
+  theme(legend.position = "none",
+        plot.title.position = "plot")+
+     geom_hline(yintercept = 0.5, colour = "grey60", linetype = 2)+
+  #coord_cartesian(ylim = c(2.5,4.5))+
+  ggtitle("",subtitle = "Preference for targeted\naffordable housing for locals")
+
+p2 <- 
+t2 %>%
+  drop_na(Type.lab) %>% 
+  ggplot(aes(x=factor(Type.lab),y=Policy_pref_local_01))+
+  geom_boxplot(width = 0.3, outlier.alpha = 0.5, outlier.size = 0.5,color = "gray70")+
+  scale_y_continuous(name="")+
+  xlab("")+
+  scale_x_discrete(name="",
+                   labels=c("a.\n\n\n",
+                                "b.",
+                                    "c.",
+                            "d."))+
+  theme_classic()+
+  theme(legend.position = "none")+
+     geom_hline(yintercept = 0.5, colour = "grey60", linetype = 2)+
+  ggtitle("",subtitle = "\n")
+
+
+ggarrange(p1,p2,ncol = 2,nrow = 1,common.legend = T)
+
+
+
+```
+<font size="0.5">
+*Notes*: Left panel presents means and 95% CIs. Right panel presents distributions via boxplots. Horizontal line represents scale's middle value.
+</font>
+
+
+
+<br>
+
+
+### **Figure 3**
+```{r}
+p1 <- 
+  t2 %>% 
+  drop_na(Type.lab) %>% 
+  ggplot(aes(x=factor(Type.lab),y=Social_id_resident_01))+
+  stat_summary(fun.data = mean_cl_normal, fun.args=list(conf.int=0.95), geom = "errorbar",width=0.1,size=0.5) + 
+  stat_summary(fun.y = mean, geom = "point", size=3)+
+  scale_y_continuous(name="")+
+  xlab("")+
+  scale_x_discrete(name="",
+                   labels=c("a.\nPoliticians",
+                            "b.\nBureaucrats\n(all)",
+                            "c.\nLocally\nresiding\nbureaucrats",
+                                    "d.\n Externally\nresiding\nbureaucrats"))+
+  theme_classic()+
+  #coord_cartesian(ylim = c(2.8,4))+
+  theme(legend.position = "none",
+        plot.title.position = "plot")+
+     geom_hline(yintercept = 0.5, colour = "grey60", linetype = 2)+
+  #coord_cartesian(ylim = c(2.75,5))+
+  ggtitle("",subtitle = "Identification with local residents\n")
+
+p2 <- 
+t2 %>% 
+  drop_na(Type.lab) %>% 
+  ggplot(aes(x=factor(Type.lab),y=Social_id_resident_01))+
+  geom_boxplot(width = 0.3, outlier.alpha = 0.5, outlier.size = 0.5,color = "gray70")+
+  scale_y_continuous(name="")+
+  xlab("")+
+  scale_x_discrete(name="",
+                   labels=c("a.\n\n\n",
+                                "b.",
+                                    "c.",
+                            "d."))+
+  theme_classic()+
+  theme(legend.position = "none")+
+     geom_hline(yintercept = 0.5, colour = "grey60", linetype = 2)+
+  ggtitle("",subtitle = "\n")
+
+
+ggarrange(p1,p2,ncol = 2,nrow = 1,common.legend = T)
+
+
+
+```
+<font size="0.5">
+*Notes*: Left panel presents means and 95% CIs. Right panel presents distributions via boxplots. Horizontal line represents scale's middle value.
+</font>
+
+<br>
+
+# Regression tables 
+
+(for appendix)
+
+<br>
+
+### **Regression table 1: Preference for densification**
+
+```{r}
+tmod.global.10 <- lmer(Policy_pref_global_01 ~ bureaucrat + (1|CITY),local_00)
+tmod.global.11 <- lmer(Policy_pref_global_01 ~ Type.lab + (1|CITY),local_00)
+tmod.global.12 <- tmod.global.11 %>% update( . ~ . + scale(Social_id_econ_and_housing_01, scale = F))
+tmod.global.13 <- tmod.global.12 %>% update( . ~ . + scale(Social_id_resident_01,scale=F))
+tmod.global.14 <- tmod.global.13 %>% 
+  update( . ~ . + 
+            scale(female,scale = F) +
+            scale(Tenure_integrated.g, scale = F) +
+            scale(Age.g, scale = F) +
+            scale(children.adult, scale = F) +
+            scale(Ideology,scale = F) +
+            scale(house_owner,scale = F) +
+            scale(log(housingprice.2015), scale = F) +
+            scale(log(population.2015), scale = F) +
+            scale(log(density.2015), scale = F))
+
+
+tab_model(tmod.global.10,tmod.global.11,tmod.global.12,tmod.global.13,tmod.global.14,
+          show.se=T,
+          show.ci = F,
+          #show.std = T,
+          collapse.se = T,
+          show.icc = F,
+          show.re.var = F,
+          show.loglik = T,
+          digits = 3,
+          show.r2 = F,
+          order.terms = c(2:15,1),
+          dv.labels = c("(1.1)", "(1.2)","(1.3)", "(1.4)", "(1.5)"),
+          pred.labels = pl,
+          title = "Outcome: Preference for densification")
+
+```
+
+<br><br>
+
+## **Regression table 2: Preference for targeted affordable housing for locals**
+```{r}
+tmod.local.10 <- lmer(Policy_pref_local_01 ~ bureaucrat + (1|CITY),local_00)
+tmod.local.11 <- lmer(Policy_pref_local_01 ~ Type.lab + (1|CITY),local_00)
+tmod.local.12 <- tmod.local.11 %>% update( . ~ . + scale(Social_id_econ_and_housing_01, scale = F))
+tmod.local.13 <- tmod.local.12 %>% update( . ~ . + scale(Social_id_resident_01,scale=F))
+tmod.local.14 <- tmod.local.13 %>% 
+  update( . ~ . + 
+            scale(female,scale = F) +
+            scale(Tenure_integrated.g, scale = F) +
+            scale(Age.g, scale = F) +
+            scale(children.adult, scale = F) +
+            scale(Ideology,scale = F) +
+            scale(house_owner,scale = F) +
+            scale(log(housingprice.2015), scale = F) +
+            scale(log(population.2015), scale = F) +
+            scale(log(density.2015), scale = F))
+
+
+tab_model(tmod.local.10,tmod.local.11,tmod.local.12,tmod.local.13,tmod.local.14,
+          show.se=T,
+          show.ci = F,
+          #show.std = T,
+          collapse.se = T,
+          show.icc = F,
+          show.re.var = F,
+          show.loglik = T,
+          digits = 3,
+          show.r2 = F,
+          order.terms = c(2:15,1),
+          dv.labels = c("(2.1)", "(2.2)","(2.3)", "(2.4)","(2.5)"),
+          pred.labels = pl,
+          title = "Outcome: Preference for housing for locals")
+```
+
+<br><br>
+
+
+## **Mediation model**
+
+
+```{r}
+set.seed(2020)
+
+t1 <- local_00 %>% 
+  drop_na(Social_id_resident_01) %>% 
+  filter(Type.lab!="1_Manager_local")
+
+med.fit_1 = 
+lmer(Policy_pref_local_01 ~ Type.lab + (1|CITY),t1)
+
+med.out_1 = med.fit_1 %>% update( . ~ . + scale(Social_id_resident_01, scale = F))
+
+
+med.model_1 = mediate(med.fit_1,
+                                med.out_1,
+                                treat = "Type.lab",
+                                mediator = "scale(Social_id_resident_01, scale = F)", 
+                                sims = 100)
+
+
+```
+
+
+```{r}
+extract_mediation_summary <- function (x) { 
+
+  clp <- 100 * x$conf.level
+  isLinear.y <- ((class(x$model.y)[1] %in% c("lm", "rq")) || 
+                   (inherits(x$model.y, "glm") && x$model.y$family$family == 
+                      "gaussian" && x$model.y$family$link == "identity") || 
+                   (inherits(x$model.y, "survreg") && x$model.y$dist == 
+                      "gaussian"))
+
+  printone <- !x$INT && isLinear.y
+
+  if (printone) {
+
+    smat <- c(x$d1, x$d1.ci, x$d1.p)
+    smat <- rbind(smat, c(x$z0, x$z0.ci, x$z0.p))
+    smat <- rbind(smat, c(x$tau.coef, x$tau.ci, x$tau.p))
+    smat <- rbind(smat, c(x$n0, x$n0.ci, x$n0.p))
+
+    rownames(smat) <- c("ACME", "ADE", "Total Effect", "Prop. Mediated")
+
+  } else {
+    smat <- c(x$d0, x$d0.ci, x$d0.p)
+    smat <- rbind(smat, c(x$d1, x$d1.ci, x$d1.p))
+    smat <- rbind(smat, c(x$z0, x$z0.ci, x$z0.p))
+    smat <- rbind(smat, c(x$z1, x$z1.ci, x$z1.p))
+    smat <- rbind(smat, c(x$tau.coef, x$tau.ci, x$tau.p))
+    smat <- rbind(smat, c(x$n0, x$n0.ci, x$n0.p))
+    smat <- rbind(smat, c(x$n1, x$n1.ci, x$n1.p))
+    smat <- rbind(smat, c(x$d.avg, x$d.avg.ci, x$d.avg.p))
+    smat <- rbind(smat, c(x$z.avg, x$z.avg.ci, x$z.avg.p))
+    smat <- rbind(smat, c(x$n.avg, x$n.avg.ci, x$n.avg.p))
+
+    rownames(smat) <- c("ACME (control)", "ACME (treated)", 
+                        "ADE (control)", "ADE (treated)", "Total Effect", 
+                        "Prop. Mediated (control)", "Prop. Mediated (treated)", 
+                        "ACME (average)", "ADE (average)", "Prop. Mediated (average)")
+
+  }
+
+  colnames(smat) <- c("Estimate", paste(clp, "% CI Lower", sep = ""), 
+                      paste(clp, "% CI Upper", sep = ""), "p-value")
+  smat
+
+}
+
+
+
+med.model_1 %>% summary %>% 
+extract_mediation_summary() %>%
+  #data.frame() %>% 
+  .[c(2,4,5,7),] %>% 
+  kable("html",digits = 3) %>%
+  kable_styling(bootstrap_options = c("condensed"), full_width = F, position = "left", font_size = 11)
+
+```
+
+
+
+<br>
+
+
+
+
+```{r}
+# Models for Appendix
+tmod.global.14 <- tmod.global.12 %>% update(data = local_00.r2)
+
+```
+<font size="0.5">
+*Notes*: Main treatment effect refers to the effect of externally residing bureaucrats versus politicians. 
+</font>
+
+
+
+
+
+
+```{r}
+t1 <- local_00 %>% 
+  mutate(Type.lab = Type.lab %>% 
+Recode("'1_Manager_local'=0"))
+
+tmod.global.10 <- lmer(Policy_pref_global_01 ~ bureaucrat + (1|CITY),t1)
+tmod.global.11 <- lmer(Policy_pref_global_01 ~ Type.lab + (1|CITY),t1)
+tmod.global.12 <- tmod.global.11 %>% update( . ~ . + scale(Social_id_econ_and_housing_01, scale = F))
+tmod.global.13 <- tmod.global.12 %>% update( . ~ . + scale(Social_id_resident_01,scale=F))
+tmod.global.14 <- tmod.global.13 %>% 
+  update( . ~ . + 
+            scale(female,scale = F) +
+            scale(Tenure_integrated.g, scale = F) +
+            scale(Age.g, scale = F) +
+            scale(children.adult, scale = F) +
+            scale(Ideology,scale = F) +
+            scale(house_owner,scale = F) +
+            scale(log(housingprice.2015), scale = F) +
+            scale(log(population.2015), scale = F) +
+            scale(log(density.2015), scale = F))
+
+
+tab_model(tmod.global.10,tmod.global.11,tmod.global.12,tmod.global.13,tmod.global.14,
+          show.se=T,
+          show.ci = F,
+          #show.std = T,
+          collapse.se = T,
+          show.icc = F,
+          show.re.var = F,
+          show.loglik = T,
+          digits = 3,
+          show.r2 = F,
+          order.terms = c(2:15,1),
+          dv.labels = c("(1.1)", "(1.2)","(1.3)", "(1.4)", "(1.5)"),
+          #pred.labels = pl,
+          title = "Outcome: Preference for densification")
+
+```
